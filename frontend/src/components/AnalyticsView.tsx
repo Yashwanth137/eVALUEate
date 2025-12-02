@@ -1,10 +1,10 @@
 
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Lock, BarChart2, PieChart, CheckCircle, XCircle, AlertTriangle, User, Download, Clock, Search, Users, FileText, Eye, Shield, X, RefreshCw } from 'lucide-react';
+import { Lock, BarChart2, PieChart, CheckCircle, XCircle, AlertTriangle, User, Download, Clock, Search, Users, FileText, Eye, Shield, X, RefreshCw, Unlock } from 'lucide-react';
 import { AssessmentData, QuestionType, Question, AssessmentHistoryItem } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell, ScatterChart, Scatter, ZAxis } from 'recharts';
-import { loginAdmin, fetchSessionEvidence, fetchAllSessions } from '../services/geminiService';
+import { loginAdmin, fetchSessionEvidence, fetchAllSessions, reactivateCandidate } from '../services/geminiService';
 
 interface AnalyticsViewProps {
   data: AssessmentData | null;
@@ -145,6 +145,12 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ data, answers, his
   const handleCloseModal = () => {
       setSelectedSessionId(null);
       setEvidenceData(null);
+  };
+
+  const handleReactivate = async (email: string) => {
+      if(!confirm(`Are you sure you want to reactivate access for ${email}?`)) return;
+      await reactivateCandidate(email);
+      alert(`Access for ${email} has been reactivated.`);
   };
 
   // --- CSV EXPORT LOGIC ---
@@ -295,12 +301,13 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ data, answers, his
                          <th className="px-6 py-4">Score</th>
                          <th className="px-6 py-4">Status</th>
                          <th className="px-6 py-4 text-center">Export</th>
+                         <th className="px-6 py-4 text-center">Reactivate</th>
                          <th className="px-6 py-4 text-center">Evidence</th>
                      </tr>
                  </thead>
                  <tbody>
                      {backendSessions.length === 0 ? (
-                         <tr><td colSpan={6} className="text-center py-8 text-slate-500">No assessments found.</td></tr>
+                         <tr><td colSpan={7} className="text-center py-8 text-slate-500">No assessments found.</td></tr>
                      ) : (
                          backendSessions.map((record, i) => (
                              <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
@@ -320,6 +327,17 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ data, answers, his
                                      >
                                          <FileText className="w-4 h-4" />
                                      </button>
+                                 </td>
+                                 <td className="px-6 py-4 text-center">
+                                     {(record.status === 'COMPLETED' || record.status === 'TERMINATED') && (
+                                         <button 
+                                            onClick={() => handleReactivate(record.email)}
+                                            className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                            title="Reactivate Access (Unlock)"
+                                         >
+                                             <Unlock className="w-4 h-4" />
+                                         </button>
+                                     )}
                                  </td>
                                  <td className="px-6 py-4 text-center">
                                      <button 
