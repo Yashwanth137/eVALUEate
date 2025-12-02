@@ -135,42 +135,42 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ initialData, onDat
                                     <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
                                         <FileText className="w-8 h-8 text-indigo-600" />
                                     </div>
-                                    <h2 className="text-2xl font-bold text-slate-900">Data Collection Consent</h2>
-                                    <p className="text-slate-500 mt-2">Please review how we capture data to ensure exam integrity.</p>
+                                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Data Collection Consent</h2>
+                                    <p className="text-slate-500 mt-2 dark:text-white">Please review how we capture data to ensure exam integrity.</p>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                                     <div className="p-4 border border-slate-200 rounded-xl flex items-start space-x-3 hover:bg-slate-50 transition-colors">
                                         <Camera className="w-6 h-6 text-indigo-500 mt-1" />
                                         <div>
-                                            <h4 className="font-semibold text-slate-800">Video & Audio Recording</h4>
-                                            <p className="text-xs text-slate-500 mt-1">Continuous webcam and microphone feed to monitor the candidate's environment.</p>
+                                            <h4 className="font-semibold text-slate-800 dark:text-white">Video & Audio Recording</h4>
+                                            <p className="text-xs text-slate-500 mt-1 dark:text-white">Continuous webcam and microphone feed to monitor the candidate's environment.</p>
                                         </div>
                                     </div>
                                     <div className="p-4 border border-slate-200 rounded-xl flex items-start space-x-3 hover:bg-slate-50 transition-colors">
                                         <MonitorX className="w-6 h-6 text-indigo-500 mt-1" />
                                         <div>
-                                            <h4 className="font-semibold text-slate-800">Screen Activity</h4>
-                                            <p className="text-xs text-slate-500 mt-1">Detection of tab switching, window minimization, and focus loss events.</p>
+                                            <h4 className="font-semibold text-slate-800 dark:text-white">Screen Activity</h4>
+                                            <p className="text-xs text-slate-500 mt-1 dark:text-white">Detection of tab switching, window minimization, and focus loss events.</p>
                                         </div>
                                     </div>
                                     <div className="p-4 border border-slate-200 rounded-xl flex items-start space-x-3 hover:bg-slate-50 transition-colors">
                                         <Move className="w-6 h-6 text-indigo-500 mt-1" />
                                         <div>
-                                            <h4 className="font-semibold text-slate-800">Motion Analysis</h4>
-                                            <p className="text-xs text-slate-500 mt-1">AI-based analysis of candidate movement and presence verification.</p>
+                                            <h4 className="font-semibold text-slate-800 dark:text-white">Motion Analysis</h4>
+                                            <p className="text-xs text-slate-500 mt-1 dark:text-white">AI-based analysis of candidate movement and presence verification.</p>
                                         </div>
                                     </div>
                                     <div className="p-4 border border-slate-200 rounded-xl flex items-start space-x-3 hover:bg-slate-50 transition-colors">
                                         <Wifi className="w-6 h-6 text-indigo-500 mt-1" />
                                         <div>
-                                            <h4 className="font-semibold text-slate-800">Device Fingerprinting</h4>
-                                            <p className="text-xs text-slate-500 mt-1">Collection of IP address and system details to prevent identity fraud.</p>
+                                            <h4 className="font-semibold text-slate-800 dark:text-white">Device Fingerprinting</h4>
+                                            <p className="text-xs text-slate-500 mt-1 dark:text-white">Collection of IP address and system details to prevent identity fraud.</p>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl mb-6">
+                                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl mb-6 dark:bg-slate-700 dark:border-slate-600">
                                     <label className="flex items-center space-x-3 cursor-pointer">
                                         <input
                                             type="checkbox"
@@ -178,7 +178,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ initialData, onDat
                                             checked={consentGiven}
                                             onChange={(e) => setConsentGiven(e.target.checked)}
                                         />
-                                        <span className="text-sm font-medium text-slate-700 select-none">
+                                        <span className="text-sm font-medium text-slate-700 select-none dark:text-white">
                                             I hereby explicitly consent to the collection, processing, and storage of my data as described above for the purpose of proctoring this assessment.
                                         </span>
                                     </label>
