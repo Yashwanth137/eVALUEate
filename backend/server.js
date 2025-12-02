@@ -51,6 +51,9 @@ const CANDIDATE_DIRECTORY = {
     'k.chanakya2004@gmail.com': 'CHANAKYA2024'
 };
 
+// TRACK ACCESS STATE (True = Locked/Used, False/Undefined = Active)
+const CANDIDATE_ACCESS_STATE = new Map();
+
 app.use(helmet());
 app.use(cors({ origin: '*', methods: ['POST', 'GET'] })); 
 app.use(express.json({ limit: '10mb' }));
@@ -135,13 +138,14 @@ DISTRIBUTION:
 
 Formatting Rules:
 1. Split the Problem Statement into 2-3 distinct paragraphs using newlines (\\n\\n).
-2. Do NOT make the entire text bold.
-3. Do NOT use asterisks (*) or markdown bolding for ANY words. Output plain text only.
+2. If the problem requires SQL, you MUST provide the Table Schema (Table Name, Columns, Data Types) clearly in the problem description.
+3. Do NOT make the entire text bold.
+4. Do NOT use asterisks (*) or markdown bolding for ANY words. Output plain text only.
 
 Format: JSON ARRAY containing exactly 2 objects.
 [
   { "type": "CODING", "text": "DSA Problem text...", "marks": 20 },
-  { "type": "CODING", "text": "JD Specific Problem text...", "marks": 20 }
+  { "type": "CODING", "text": "JD Specific Problem text (includes Schema if SQL)...", "marks": 20 }
 ]
 Strictly valid JSON Array of length 2. No Markdown.
 `;
@@ -221,6 +225,19 @@ app.post('/api/admin/evidence', verifyToken, (req, res) => {
     res.json({ evidence: session.evidence || [], candidateName: session.candidate.name });
 });
 
+// NEW: ADMIN REACTIVATE ACCESS
+app.post('/api/admin/reactivate', verifyToken, (req, res) => {
+    if (req.user.role !== 'ADMIN') return res.status(403).json({ error: "Admin Only" });
+    const { email } = req.body;
+    
+    if (CANDIDATE_ACCESS_STATE.has(email)) {
+        CANDIDATE_ACCESS_STATE.delete(email);
+        console.log(`[ADMIN] Reactivated access for ${email}`);
+        return res.json({ success: true, message: "Candidate access reactivated." });
+    }
+    res.json({ success: false, message: "Candidate access was not locked." });
+});
+
 // INITIAL GENERATION: S1 ONLY (30 MCQs)
 app.post('/api/assessment/generate', async (req, res) => {
     try {
@@ -232,6 +249,11 @@ app.post('/api/assessment/generate', async (req, res) => {
         }
         if (CANDIDATE_DIRECTORY[candidateEmail] !== accessCode) {
             return res.status(403).json({ error: "Invalid Access Code." });
+        }
+
+        // ACCESS STATE CHECK
+        if (CANDIDATE_ACCESS_STATE.get(candidateEmail)) {
+            return res.status(403).json({ error: "Access Denied: Assessment already completed. Contact Admin." });
         }
 
         let s1Questions = [];
@@ -389,6 +411,10 @@ app.post('/api/assessment/submit', verifyToken, async (req, res) => {
     let totalScore = 0; 
     let maxScore = 0;
     
+    // LOCK ACCESS for this candidate
+    CANDIDATE_ACCESS_STATE.set(session.candidate.email, true);
+    console.log(`[ACCESS] Credentials locked for ${session.candidate.email}`);
+    
     // Grade All Sections
     for (const section of session.fullSections) {
         for (const q of section.questions) {
@@ -470,18 +496,18 @@ app.post('/api/code/run', verifyToken, async (req, res) => {
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Act as a Strict Compiler & Judge.
+            contents: `Act as a Strict Compiler or SQL Database Engine.
             Language: ${language}
             Problem: "${problem}"
             Student Code:
             ${code}
 
-            Task: Validate the code logic. Run 3 mental test cases.
+            Task: Validate the code logic or SQL query. Run 3 mental test cases.
             MARKING SCHEMA: Base Case (5 Marks), General Case (6 Marks), Edge Case (9 Marks).
 
             Output Format (Terminal Style Plain Text):
-            > Compiling ${language}...
-            > [Status] Syntax Check...
+            > Compiling/Executing ${language}...
+            > [Status] Syntax/Schema Check...
             > Running Test Case 1 (Base Case) [5 Marks]: [Result] ... [PASS/FAIL]
             > Running Test Case 2 (General Case) [6 Marks]: [Result] ... [PASS/FAIL]
             > Running Test Case 3 (Edge Case) [9 Marks]: [Result] ... [PASS/FAIL]
@@ -490,8 +516,9 @@ app.post('/api/code/run', verifyToken, async (req, res) => {
 
             Rules:
             1. If Syntax Error, output ONLY the error message and line number.
-            2. Do NOT be lenient. If logic is wrong, FAIL the test case.
-            3. Do NOT provide the corrected code or solution. Just the execution log.
+            2. If SQL, assume the schema provided in the problem statement exists and validate the query against it.
+            3. Do NOT be lenient. If logic is wrong, FAIL the test case.
+            4. Do NOT provide the corrected code or solution. Just the execution log.
             `,
         });
         

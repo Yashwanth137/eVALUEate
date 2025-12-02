@@ -8,7 +8,7 @@ interface ExamViewProps {
   onFinish: (answers: Record<string, any>, timeLog: Record<number, number>) => void;
 }
 
-const SUPPORTED_LANGUAGES = ['javascript', 'python', 'java', 'cpp', 'csharp', 'go', 'ruby', 'react', 'nodejs'];
+const SUPPORTED_LANGUAGES = ['javascript', 'python', 'java', 'cpp', 'csharp', 'go', 'ruby', 'react', 'nodejs', 'sql'];
 
 export const ExamView: React.FC<ExamViewProps> = ({ sections: initialSections, onFinish }) => {
   const [sections, setSections] = useState<Section[]>(initialSections);
@@ -79,19 +79,19 @@ export const ExamView: React.FC<ExamViewProps> = ({ sections: initialSections, o
 
       // RULE 1: PREFETCH Section 2 (FITB) if we are in Section 1 and 25 mins have passed
       if (currentSection.id === 's1-mcq' && elapsedTime >= 1500 && !fetchedSections.current.has('s2-fitb')) {
-//          console.log("Time-based Trigger: Generating Section 2...");
+          console.log("Time-based Trigger: Generating Section 2...");
           triggerFetch('s2-fitb');
       }
 
       // RULE 2: PREFETCH Section 3 (Coding) if we are in Section 2 and 1 minute has passed
       if (currentSection.id === 's2-fitb' && elapsedTime >= 60 && !fetchedSections.current.has('s3-coding')) {
-//          console.log("Time-based Trigger: Generating Section 3...");
+          console.log("Time-based Trigger: Generating Section 3...");
           triggerFetch('s3-coding');
       }
       
       // RULE 3 (THE FIX): If we land on a pending section (e.g., finished S1 early), generate IMMEDIATELY
       if (currentSection.isPending && !fetchedSections.current.has(currentSection.id)) {
- //         console.log(`On-Entry Trigger: Force Generating ${currentSection.id}...`);
+          console.log(`On-Entry Trigger: Force Generating ${currentSection.id}...`);
           triggerFetch(currentSection.id);
       }
 

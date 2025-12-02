@@ -77,105 +77,50 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ initialData, onDat
 
     if (isLoading) {
         return (
-            <div className="h-full flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-900 p-8 text-center">
+            <div className="h-full flex flex-col items-center justify-center bg-slate-50 p-8 text-center">
                 <Loader2 className="w-12 h-12 text-indigo-600 animate-spin mb-4" />
-                <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-2">
-                    Verifying Credentials
-                </h2>
-                <p className="text-slate-500 dark:text-slate-400">
-                    Generating 30-Question Assessment & Validating Access Code...
-                </p>
+                <h2 className="text-2xl font-bold text-slate-900 mb-2">Verifying Credentials</h2>
+                <p className="text-slate-500">Generating 30-Question Assessment & Validating Access Code...</p>
             </div>
         );
     }
 
     return (
         <div className="h-full overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-6 md:p-12 relative">
-            <button
-                onClick={onGoToAdmin}
-                className="absolute top-6 left-6 flex items-center space-x-2 px-3 py-2
-             text-slate-400 hover:text-indigo-600 hover:bg-white/80
-             dark:text-slate-300 dark:hover:bg-slate-800 rounded-lg
-             transition-colors text-sm font-medium"
-            >
-                <ShieldCheck className="w-4 h-4" />
-                <span>Admin Console</span>
-            </button>
-
+            <button onClick={onGoToAdmin} className="absolute top-6 left-6 flex items-center space-x-2 px-3 py-2 text-slate-400 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors text-sm font-medium"><ShieldCheck className="w-4 h-4" /><span>Admin Console</span></button>
 
             <div className="max-w-4xl mx-auto mt-6">
-                <div className="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
+                <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-700">
                     <div className="p-8 space-y-6">
 
                         {/* STEP 1: INPUT */}
                         {step === 'INPUT' && (
                             <>
-                                <div className="text-center mb-8"><h1 className="text-3xl font-bold text-slate-900">eVALUEate Assessment Portal</h1></div>
-                                <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex items-start space-x-3 mb-4">
-                                    <Lock className="w-5 h-5 text-indigo-600 mt-0.5 flex-shrink-0" />
-                                    <div className="text-sm text-indigo-900"><strong>Access Control Active:</strong> Assessment is restricted to authorized candidates only.</div>
+                                <div className="text-center mb-8"><h1 className="text-3xl font-bold text-slate-900 dark:text-white">eVALUEate Assessment Portal</h1></div>
+                                <div className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex items-start space-x-3 mb-4 dark:bg-slate-700 dark:border-slate-600">
+                                    <Lock className="w-5 h-5 text-indigo-600 mt-0.5 flex-shrink-0 dark:text-white" />
+                                    <div className="text-sm text-indigo-900 dark:text-white"><strong>Access Control Active:</strong> Assessment is restricted to authorized candidates only.</div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="space-y-2"><label className="text-sm font-semibold text-slate-700 dark:text-slate-800">Name</label><input
-                                        type="text"
-                                        className="w-full px-4 py-3 rounded-xl
-             bg-white dark:bg-slate-800
-             border border-slate-200 dark:border-slate-700
-             text-slate-900 dark:text-slate-100
-             placeholder:text-slate-400 dark:placeholder:text-slate-500
-             outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                                        value={initialData.name}
-                                        onChange={e => handleInputChange('name', e.target.value)}
-                                    />
-                                    </div>
-                                    <div className="space-y-2"><label className="text-sm font-semibold text-slate-700 dark:text-slate-800">Registered Email</label><input
-                                        type="email"
-                                        placeholder="e.g. candidate@evalueate.com"
-                                        className="w-full px-4 py-3 rounded-xl
-             bg-white dark:bg-slate-800
-             border border-slate-200 dark:border-slate-700
-             text-slate-900 dark:text-slate-100
-             placeholder:text-slate-400 dark:placeholder:text-slate-500
-             outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                                        value={initialData.email}
-                                        onChange={e => handleInputChange('email', e.target.value)}
-                                    />
-                                    </div>
+                                    <div className="space-y-2"><label className="text-sm font-semibold">Name</label><input type="text" className="w-full px-4 py-3 rounded-xl dark:bg-slate-700 dark:border-slate-600 border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all" value={initialData.name} onChange={e => handleInputChange('name', e.target.value)} /></div>
+                                    <div className="space-y-2"><label className="text-sm font-semibold">Registered Email</label><input type="email" placeholder="e.g. candidate@evalueate.com" className="w-full dark:bg-slate-700 dark:border-slate-600 px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all" value={initialData.email} onChange={e => handleInputChange('email', e.target.value)} /></div>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="space-y-2">
-                                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-800">Access Code</label>
+                                        <label className="text-sm font-semibold">Access Code</label>
                                         <div className="relative">
-                                            <Key className="absolute left-3 top-3.5 w-5 h-5 text-slate-400 dark:text-slate-500" />
-
+                                            <Key className="absolute left-3 top-3.5 w-5 h-5 text-slate-400" />
                                             <input
                                                 type="password"
                                                 placeholder="e.g. EVAL2025"
-                                                className="w-full pl-10 pr-4 py-3 rounded-xl
-             bg-white dark:bg-slate-800
-             border border-slate-200 dark:border-slate-700
-             text-slate-900 dark:text-slate-100
-             placeholder:text-slate-400 dark:placeholder:text-slate-500
-             outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                                                className="w-full dark:bg-slate-700 dark:border-slate-600 pl-10 pr-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                                                 value={accessCode}
                                                 onChange={e => setAccessCode(e.target.value)}
                                             />
-
                                         </div>
                                     </div>
-                                    <div className="space-y-2"><label className="text-sm font-semibold text-slate-700 dark:text-slate-800">Target Role (Job Description)</label><input
-                                        type="text"
-                                        placeholder="e.g. Senior React Developer"
-                                        className="w-full px-4 py-3 rounded-xl
-             bg-white dark:bg-slate-800
-             border border-slate-200 dark:border-slate-700
-             text-slate-900 dark:text-slate-100
-             placeholder:text-slate-400 dark:placeholder:text-slate-500
-             outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                                        value={initialData.jd}
-                                        onChange={e => handleInputChange('jd', e.target.value)}
-                                    /></div>
+                                    <div className="space-y-2"><label className="text-sm font-semibold">Target Role (Job Description)</label><input type="text" placeholder="e.g. Senior React Developer" className="w-full dark:bg-slate-700 dark:border-slate-600 px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 transition-all" value={initialData.jd} onChange={e => handleInputChange('jd', e.target.value)} /></div>
                                 </div>
 
                                 {error && <div className="p-4 bg-rose-50 border border-rose-100 text-rose-600 rounded-xl flex items-center space-x-3 text-sm animate-in slide-in-from-top-2"><AlertCircle className="w-5 h-5" /><span>{error}</span></div>}
