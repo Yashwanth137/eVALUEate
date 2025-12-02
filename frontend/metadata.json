@@ -1,0 +1,8 @@
+{
+  "name": "Gemini eVALUEate Platform",
+  "description": "A robust, scalable SaaS dashboard platform featuring real-time AI chat, data analytics visualization, and a modern responsive UI.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
