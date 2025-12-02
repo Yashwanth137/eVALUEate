@@ -1,5 +1,3 @@
-
-
 const express = require('express');
 const cors = require('cors');
 const { GoogleGenAI } = require('@google/genai');
@@ -139,13 +137,22 @@ DISTRIBUTION:
 Formatting Rules:
 1. Split the Problem Statement into 2-3 distinct paragraphs using newlines (\\n\\n).
 2. If the problem requires SQL, you MUST provide the Table Schema (Table Name, Columns, Data Types) clearly in the problem description.
-3. Do NOT make the entire text bold.
-4. Do NOT use asterisks (*) or markdown bolding for ANY words. Output plain text only.
+3. **MANDATORY**: Include 2 Sample Test Cases (Input/Output) at the end of the problem description.
+   Format:
+   Example 1:
+   Input: ...
+   Output: ...
+   
+   Example 2:
+   Input: ...
+   Output: ...
+4. Do NOT make the entire text bold.
+5. Do NOT use asterisks (*) or markdown bolding for ANY words. Output plain text only.
 
 Format: JSON ARRAY containing exactly 2 objects.
 [
-  { "type": "CODING", "text": "DSA Problem text...", "marks": 20 },
-  { "type": "CODING", "text": "JD Specific Problem text (includes Schema if SQL)...", "marks": 20 }
+  { "type": "CODING", "text": "DSA Problem text...\\n\\nExample 1:...", "marks": 25 },
+  { "type": "CODING", "text": "JD Specific Problem text (includes Schema if SQL)...\\n\\nExample 1:...", "marks": 25 }
 ]
 Strictly valid JSON Array of length 2. No Markdown.
 `;
@@ -155,15 +162,15 @@ Act as a Strict Code Grader.
 Problem: "${problem}"
 Student Code: "${code}"
 
-Marking Schema (Max 20):
+Marking Schema (Max 25):
 - Base Case Correct: +5 Marks
-- General Case Correct: +6 Marks
-- Edge Case Correct: +9 Marks
-Total = 5 + 6 + 9 = 20.
+- General Case Correct: +8 Marks
+- Edge Case Correct: +12 Marks
+Total = 5 + 8 + 12 = 25.
 
 Task:
 Analyze the code logic. Does it handle the base case? Does it handle the general logic? Does it handle edge cases (null, empty, large inputs)?
-Return ONLY the integer score (0, 5, 6, 9, 11, 14, 15, or 20).
+Return ONLY the integer score (0, 5, 8, 12, 13, 17, 20, or 25).
 `;
 
 const GENERATE_FEEDBACK_PROMPT = (jd, score, maxScore) => `
@@ -375,8 +382,8 @@ app.post('/api/assessment/generate-section', verifyToken, async (req, res) => {
             ];
         } else {
             newQuestions = [
-                { id: 9001, type: "CODING", text: "Problem 1: Implement a Balanced Binary Search Tree insertion logic.", marks: 20 },
-                { id: 9002, type: "CODING", text: "Problem 2: Optimize an API response handler for large datasets.", marks: 20 }
+                { id: 9001, type: "CODING", text: "Problem 1: Implement a Balanced Binary Search Tree insertion logic.\n\nExample 1:\nInput: ...", marks: 25 },
+                { id: 9002, type: "CODING", text: "Problem 2: Optimize an API response handler for large datasets.\n\nExample 1:\nInput: ...", marks: 25 }
             ];
         }
     }
@@ -485,13 +492,13 @@ app.post('/api/assessment/submit', verifyToken, async (req, res) => {
         success: true, 
         score: totalScore, 
         maxScore, 
-        feedback: feedback,
+        feedback: feedback, 
         gradedDetails: {} 
     });
 });
 
 app.post('/api/code/run', verifyToken, async (req, res) => {
-    const { language, code, problem } = req.body;
+    const { language, code, problem, customInput } = req.body;
     
     try {
         const response = await ai.models.generateContent({
@@ -501,24 +508,27 @@ app.post('/api/code/run', verifyToken, async (req, res) => {
             Problem: "${problem}"
             Student Code:
             ${code}
+            ${customInput ? `\nUser provided Custom Input: "${customInput}"` : ''}
 
             Task: Validate the code logic or SQL query. Run 3 mental test cases.
-            MARKING SCHEMA: Base Case (5 Marks), General Case (6 Marks), Edge Case (9 Marks).
+            MARKING SCHEMA: Base Case (5 Marks), General Case (8 Marks), Edge Case (12 Marks).
 
             Output Format (Terminal Style Plain Text):
             > Compiling/Executing ${language}...
             > [Status] Syntax/Schema Check...
-            > Running Test Case 1 (Base Case) [5 Marks]: [Result] ... [PASS/FAIL]
-            > Running Test Case 2 (General Case) [6 Marks]: [Result] ... [PASS/FAIL]
-            > Running Test Case 3 (Edge Case) [9 Marks]: [Result] ... [PASS/FAIL]
+            ${customInput ? `> Running Custom Input [Input: ${customInput}] ... [Result/Output]\n` : ''}
+            > Running Test Case 1 (Base Case) [Input: <Specific Input Used>] [5 Marks]: [Result] ... [PASS/FAIL]
+            > Running Test Case 2 (General Case) [Input: <Specific Input Used>] [8 Marks]: [Result] ... [PASS/FAIL]
+            > Running Test Case 3 (Edge Case) [Input: <Specific Input Used>] [12 Marks]: [Result] ... [PASS/FAIL]
             
             > Final Verdict: [SUCCESS/FAILED]
 
             Rules:
-            1. If Syntax Error, output ONLY the error message and line number.
-            2. If SQL, assume the schema provided in the problem statement exists and validate the query against it.
-            3. Do NOT be lenient. If logic is wrong, FAIL the test case.
-            4. Do NOT provide the corrected code or solution. Just the execution log.
+            1. If Custom Input is provided, execute it FIRST and display the result clearly before standard tests.
+            2. If Syntax Error, output ONLY the error message and line number.
+            3. If SQL, assume the schema provided in the problem statement exists and validate the query against it.
+            4. Do NOT be lenient. If logic is wrong, FAIL the test case.
+            5. Do NOT provide the corrected code or solution. Just the execution log.
             `,
         });
         

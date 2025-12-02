@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AlertTriangle, EyeOff, Terminal, Loader2, PlayCircle, RefreshCw, Maximize2, Minimize2 } from 'lucide-react';
+import { AlertTriangle, EyeOff, Terminal, Loader2, PlayCircle, RefreshCw, Maximize2, Minimize2, Keyboard } from 'lucide-react';
 import { Section, ExamState } from '../types';
 import { compileAndRunCode, sendHeartbeat, triggerSectionGeneration } from '../services/geminiService';
 
@@ -11,6 +11,7 @@ interface ExamViewProps {
 const SUPPORTED_LANGUAGES = ['javascript', 'python', 'java', 'cpp', 'csharp', 'go', 'ruby', 'react', 'nodejs', 'sql'];
 
 export const ExamView: React.FC<ExamViewProps> = ({ sections: initialSections, onFinish }) => {
+  // --- EFFECT: HOOKS MOVED TO TOP ---
   const [sections, setSections] = useState<Section[]>(initialSections);
   const [examState, setExamState] = useState<ExamState>({
     isActive: false, 
@@ -36,6 +37,9 @@ export const ExamView: React.FC<ExamViewProps> = ({ sections: initialSections, o
   const [code, setCode] = useState('');
   const [selectedLanguage, setSelectedLanguage] = useState('javascript');
   const [showRetry, setShowRetry] = useState(false);
+  const [customInput, setCustomInput] = useState('');
+  const [showCustomInput, setShowCustomInput] = useState(false);
+  const outputEndRef = useRef<HTMLDivElement>(null);
 
   // Track which sections we have already requested to generate
   const fetchedSections = useRef<Set<string>>(new Set());
@@ -103,6 +107,8 @@ export const ExamView: React.FC<ExamViewProps> = ({ sections: initialSections, o
         const qId = sections[examState.currentSectionIndex].questions[examState.currentQuestionIndex].id;
         setCode(examState.answers[qId] || '');
         setCompilerOutput(null);
+        setCustomInput(''); // Reset custom input on question change
+        setShowCustomInput(false);
     }
   }, [examState.currentQuestionIndex, examState.currentSectionIndex, sections]);
 
@@ -153,6 +159,13 @@ export const ExamView: React.FC<ExamViewProps> = ({ sections: initialSections, o
     window.addEventListener('blur', handleBlur); window.addEventListener('focus', handleFocus);
     return () => { window.removeEventListener('blur', handleBlur); window.removeEventListener('focus', handleFocus); };
   }, [examState.isActive]);
+
+  // --- EFFECT 6: Auto-scroll output ---
+  useEffect(() => {
+      if (outputEndRef.current && compilerOutput) {
+          outputEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+  }, [compilerOutput]);
 
   const handleViolation = (type: string) => { 
       if (!examState.isActive || examState.isTerminated) return; 
@@ -208,7 +221,9 @@ export const ExamView: React.FC<ExamViewProps> = ({ sections: initialSections, o
       setCompilerOutput({ status: 'Running', output: 'Compiling code on remote server...' });
       
       try { 
-          const res = await compileAndRunCode(selectedLanguage, code, currentQuestion.text); 
+          // Pass custom input if toggle is open
+          const inputToRun = showCustomInput ? customInput : undefined;
+          const res = await compileAndRunCode(selectedLanguage, code, currentQuestion.text, inputToRun); 
           setCompilerOutput({status: 'Success', output: res.output}); 
       } catch(e) {
           setCompilerOutput({status: 'Error', output: "Compilation Service Unavailable"});
@@ -345,29 +360,50 @@ export const ExamView: React.FC<ExamViewProps> = ({ sections: initialSections, o
                       />
                   </div>
 
-                  {/* BOTTOM ACTION BAR (RUN BUTTON) */}
-                  <div className="h-14 bg-[#252526] border-t border-[#333] flex items-center justify-between px-4">
-                      <div className="flex items-center">
-                         <button 
-                             onClick={runCode} 
-                             disabled={isCompiling} 
-                             className="flex items-center space-x-2 px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold rounded transition-all shadow-lg shadow-emerald-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                         >
-                            {isCompiling ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />}
-                            <span>{isCompiling ? 'Running...' : 'Run Code'}</span>
-                         </button>
-                      </div>
-                      <span className="text-xs text-slate-500">Press Run to compile & test</span>
-                  </div>
-
                   {/* TERMINAL OUTPUT PANEL */}
-                  <div className="h-48 bg-[#1e1e1e] border-t-2 border-[#333] flex flex-col">
+                  <div className={`bg-[#1e1e1e] border-t-2 border-[#333] flex flex-col relative transition-all duration-300 ${showCustomInput ? 'h-64' : 'h-48'}`}>
                       <div className="px-4 py-2 bg-[#2d2d2d] text-xs text-slate-400 font-bold uppercase tracking-wider flex justify-between items-center">
-                          <span>Output Terminal</span>
-                          {compilerOutput && <span className={compilerOutput.status === 'Success' ? 'text-emerald-400' : 'text-rose-400'}>{compilerOutput.status}</span>}
+                          <div className="flex items-center space-x-4">
+                              <span>Output Terminal</span>
+                               {/* START RUN BUTTON (BOTTOM LEFT) */}
+                               <button 
+                                    onClick={runCode} 
+                                    disabled={isCompiling} 
+                                    className="flex items-center space-x-2 px-4 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded transition-all shadow-lg shadow-emerald-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isCompiling ? <Loader2 className="w-3 h-3 animate-spin" /> : <PlayCircle className="w-3 h-3" />}
+                                    <span>{isCompiling ? 'Running...' : 'Run Code'}</span>
+                                </button>
+                                {/* END RUN BUTTON */}
+                          </div>
+                          <div className="flex items-center space-x-3">
+                              <label className="flex items-center space-x-2 cursor-pointer hover:text-white transition-colors">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={showCustomInput} 
+                                    onChange={e => setShowCustomInput(e.target.checked)}
+                                    className="w-3 h-3 rounded border-slate-500 bg-[#333] text-indigo-500 focus:ring-offset-0 focus:ring-0"
+                                  />
+                                  <span className="flex items-center"><Keyboard className="w-3 h-3 mr-1"/> Custom Input</span>
+                              </label>
+                              {compilerOutput && <span className={compilerOutput.status === 'Success' ? 'text-emerald-400' : 'text-rose-400'}>{compilerOutput.status}</span>}
+                          </div>
                       </div>
+                      
+                      {showCustomInput && (
+                          <div className="p-2 bg-[#1e1e1e] border-b border-[#333]">
+                              <textarea 
+                                  value={customInput}
+                                  onChange={e => setCustomInput(e.target.value)}
+                                  className="w-full h-16 bg-[#252526] text-slate-300 p-2 text-xs font-mono outline-none border border-[#444] rounded resize-none focus:border-indigo-500"
+                                  placeholder="Enter your custom input here..."
+                              />
+                          </div>
+                      )}
+
                       <pre className="flex-1 p-4 font-mono text-xs overflow-y-auto text-slate-300 whitespace-pre-wrap">
                           {compilerOutput?.output || '> Waiting for execution...'}
+                          <div ref={outputEndRef} />
                       </pre>
                   </div>
               </div>
