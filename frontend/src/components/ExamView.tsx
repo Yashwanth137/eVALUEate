@@ -339,8 +339,8 @@ export const ExamView: React.FC<ExamViewProps> = ({ sections: initialSections, o
                                   ))}
                                </select>
                            </div>
-                           <span className={`text-[10px] flex items-center px-2 py-1 rounded ${examState.answers[currentQuestion.id] ? 'bg-emerald-900/30 text-emerald-400' : 'bg-slate-700 text-slate-400'}`}>
-                               {examState.answers[currentQuestion.id] ? 'Saved' : 'Unsaved'}
+                           <span className={`text-[10px] flex items-center px-2 py-1 rounded ${examState.answers[currentQuestion.id] && examState.answers[currentQuestion.id].trim() !== '' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-slate-700 text-slate-400'}`}>
+                               {examState.answers[currentQuestion.id] && examState.answers[currentQuestion.id].trim() !== '' ? 'Saved' : 'Unsaved'}
                            </span>
                       </div>
                   </div>
@@ -438,7 +438,7 @@ export const ExamView: React.FC<ExamViewProps> = ({ sections: initialSections, o
                                       className={`h-10 rounded-lg font-bold text-sm transition-all ${
                                           i === examState.currentQuestionIndex 
                                               ? 'bg-indigo-600 text-white shadow-md transform scale-105' 
-                                              : examState.answers[q.id] 
+                                              : examState.answers[q.id] !== undefined
                                                   ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' 
                                                   : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 hover:border-indigo-300'
                                       }`}
