@@ -109,7 +109,13 @@ export const generateAssessmentContent = async (jd: string, name: string, email:
             }));
         } catch (e) {
             // Ultimate safety net
-            mcqs = Array.from({length:30}, (_,i)=>({id:i+1, type:'MCQ', text:`Technical Question ${i+1} for ${jd.substring(0,20)}...`, options:['Option A','Option B','Option C','Option D'], marks:1}));
+            mcqs = Array.from({length:30}, (_,i)=>({
+                id: i+1, 
+                type: QuestionType.MCQ, 
+                text: `Technical Question ${i+1} for ${jd.substring(0,20)}...`, 
+                options:['Option A','Option B','Option C','Option D'], 
+                marks:1
+            }));
         }
 
         const sections: Section[] = [
@@ -145,7 +151,7 @@ export const triggerSectionGeneration = async (sectionId: string): Promise<any[]
         if (sectionId === 's2-fitb') {
              const aiRes = await getClientAI().models.generateContent({
                 model: 'gemini-2.5-flash',
-                contents: `Generate 10 DISTINCT and UNIQUE Technical Fill-in-the-Blank questions. 5 on Core CS (DSA, SQL, OS) and 5 on "${jd}". Rule: Do NOT make the text bold (no asterisks). JSON Keys: id, type="FITB", text (use '___'), marks=2.`,
+                contents: `Generate 10 DISTINCT and UNIQUE Technical Fill-in-the-Blank questions. 5 on Core CS (DSA, SQL, OS) and 5 on "${jd}". Rule: Do NOT make the text bold (no asterisks). JSON Keys: id, type="FITB", text (use '___'), marks=2, caseSensitive: boolean (true/false, default false).`,
                 config: { responseMimeType: 'application/json' }
             });
             const rawQuestions = JSON.parse(cleanJSON(aiRes.text));
@@ -322,7 +328,7 @@ export const fetchSessionEvidence = async (sid: string) => {
         const res = await secureFetch('/admin/evidence', { sessionId: sid });
         if (res.ok) return await res.json();
     } catch(e) {}
-    return { evidence: [], candidateName: 'Unknown' };
+    return { evidence: [], logs: [], candidateName: 'Unknown' };
 };
 
 export const sendHeartbeat = async (violation?: string, snapshot?: string): Promise<{ status: string, reason?: string }> => {
@@ -340,53 +346,33 @@ export const compileAndRunCode = async (lang: string, code: string, problem: str
     } catch(e) {}
     
     // Dynamic Judge Fallback (Offline Mode)
-    // Construct Example Context
+    // Construct Example Context with EXPECTED OUTPUT
     let examplesContext = "";
     if (examples && Array.isArray(examples) && examples.length >= 2) {
         examplesContext = `
         Use these EXACT provided examples for the first two test cases:
-        Example 1 (Base Case): Input: ${JSON.stringify(examples[0].input)}
-        Example 2 (General Case): Input: ${JSON.stringify(examples[1].input)}
+        Example 1 (Base Case): Input: ${JSON.stringify(examples[0].input)} | Expected Output: ${JSON.stringify(examples[0].output)}
+        Example 2 (General Case): Input: ${JSON.stringify(examples[1].input)} | Expected Output: ${JSON.stringify(examples[1].output)}
         `;
     }
 
     try {
          const judgeRes = await getClientAI().models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Act as a Strict Compiler or SQL Database Engine.
-            Language: ${lang}
-            Problem: "${problem}"
-            Student Code:
-            ${code}
-            ${customInput ? `\nUser provided Custom Input: "${customInput}"` : ''}
-
+            contents: `Act as a Strict Compiler. Lang: ${lang}. Problem: "${problem}". Code: ${code}. ${customInput ? `Custom Input: ${customInput}` : ''}.
+            
             ${examplesContext}
 
-            Task: Validate the code logic or SQL query. Run 3 mental test cases.
-            MARKING SCHEMA: Base Case (5 Marks), General Case (8 Marks), Edge Case (12 Marks).
-
-            Output Format (Terminal Style Plain Text):
-            > Compiling/Executing ${lang}...
-            > [Status] Syntax/Schema Check...
-            ${customInput ? `> Running Custom Input [Input: ${customInput}] ... [Result/Output]\n` : ''}
-            > Running Test Case 1 (Base Case) [Input: ${examples ? "As per Problem" : "Generated"}] [5 Marks]: [Result] ... [PASS/FAIL]
-            > Running Test Case 2 (General Case) [Input: ${examples ? "As per Problem" : "Generated"}] [8 Marks]: [Result] ... [PASS/FAIL]
-            > Running Test Case 3 (Edge Case) [Input: <Specific Input Used>] [12 Marks]: [Result] ... [PASS/FAIL]
-            
-            > Final Verdict: [SUCCESS/FAILED]
-
+            Validate logic. Run 3 mental test cases (Base 5, General 8, Edge 12).
             Rules:
-            1. If Custom Input is provided, execute it FIRST and display the result clearly before standard tests.
-            2. If "examples" were provided, you MUST use those specific inputs for Test Case 1 and 2 to ensure consistency with the problem description.
-            3. If Syntax Error, output ONLY the error message and line number.
-            4. If SQL, assume the schema provided in the problem statement exists and validate the query against it.
-            5. Do NOT be lenient. If logic is wrong, FAIL the test case.
-            6. Do NOT provide the corrected code or solution. Just the execution log.
-            `,
+            1. If "examples" were provided, you MUST use those specific inputs for Test Case 1 and 2 AND compare the student's output against the Expected Output provided.
+            2. If output does NOT match expected output exactly, the test case is FAIL.
+            
+            Output plain text terminal logs only.`,
         });
         return { success: true, output: judgeRes.text };
     } catch(e) {
-        return { success: true, output: `> Compiling ${lang}...\n> Error: Offline Compiler Unavailable.\n> Please check network connection.` };
+        return { success: true, output: `> Compiling ${lang}...\n> Error: Offline Compiler Unavailable.` };
     }
 };
 

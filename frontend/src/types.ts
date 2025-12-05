@@ -41,6 +41,7 @@ export interface Question {
   marks: number;
   subtopic?: string;
   examples?: { input: string, output: string }[]; // Structured examples for coding
+  caseSensitive?: boolean;
 }
 
 export interface Section {

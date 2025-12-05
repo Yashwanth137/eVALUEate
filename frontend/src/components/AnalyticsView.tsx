@@ -1,10 +1,9 @@
 
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Lock, BarChart2, PieChart, CheckCircle, XCircle, AlertTriangle, User, Download, Clock, Search, Users, FileText, Eye, Shield, X, RefreshCw, Unlock } from 'lucide-react';
+import { Lock, BarChart2, PieChart, CheckCircle, XCircle, AlertTriangle, User, Download, Clock, Search, Users, FileText, Eye, Shield, X, RefreshCw, Unlock, Plus, Key, ScrollText } from 'lucide-react';
 import { AssessmentData, QuestionType, Question, AssessmentHistoryItem } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell, ScatterChart, Scatter, ZAxis } from 'recharts';
-import { loginAdmin, fetchSessionEvidence, fetchAllSessions, reactivateCandidate } from '../services/geminiService';
+import { loginAdmin, fetchSessionEvidence, fetchAllSessions, reactivateCandidate, createCandidate, fetchAuthorizedCandidates } from '../services/geminiService';
 
 interface AnalyticsViewProps {
   data: AssessmentData | null;
@@ -110,19 +109,30 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ data, answers, his
   const [error, setError] = useState('');
   const [studentFilter, setStudentFilter] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'MANAGEMENT'>('DASHBOARD');
   
   // Real Data from Backend
   const [backendSessions, setBackendSessions] = useState<any[]>([]);
+  const [authorizedCandidates, setAuthorizedCandidates] = useState<any[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // New User Form
+  const [newCandidate, setNewCandidate] = useState({ email: '', code: '' });
+  const [createMsg, setCreateMsg] = useState({ type: '', text: '' });
 
   // Security Modal State
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [evidenceData, setEvidenceData] = useState<{evidence: any[], candidateName: string} | null>(null);
+  const [evidenceData, setEvidenceData] = useState<{evidence: any[], logs: any[], candidateName: string} | null>(null);
+  const [modalTab, setModalTab] = useState<'EVIDENCE'|'LOGS'>('EVIDENCE');
 
   const refreshData = async () => {
       setIsRefreshing(true);
       const sessions = await fetchAllSessions();
       setBackendSessions(sessions);
+      
+      const candidates = await fetchAuthorizedCandidates();
+      setAuthorizedCandidates(candidates.candidates || []);
+      
       setIsRefreshing(false);
   };
 
@@ -144,9 +154,27 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ data, answers, his
     setIsLoading(false);
   };
 
+  const handleCreateCandidate = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newCandidate.email || !newCandidate.code) {
+          setCreateMsg({ type: 'error', text: 'Please fill all fields' });
+          return;
+      }
+      
+      const res = await createCandidate(newCandidate.email, newCandidate.code);
+      if (res.success) {
+          setCreateMsg({ type: 'success', text: 'Candidate authorized successfully.' });
+          setNewCandidate({ email: '', code: '' });
+          refreshData(); // Reload list
+      } else {
+          setCreateMsg({ type: 'error', text: res.error || 'Creation Failed' });
+      }
+  };
+
   const handleViewEvidence = async (sessionId: string) => {
       setSelectedSessionId(sessionId);
       setEvidenceData(null);
+      setModalTab('EVIDENCE');
       const data = await fetchSessionEvidence(sessionId);
       setEvidenceData(data);
   };
@@ -180,7 +208,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ data, answers, his
       if (backendSessions.length === 0) return alert("No data available to export.");
 
       // CSV Header
-      let csv = "Session ID,Candidate Name,Email,Status,Score,Max Score,Time Taken (Min),Violations Count,Summary,Strengths,Weaknesses,Roadmap\n";
+      let csv = "Session ID,Candidate Name,Email,Status,Score,S1(MCQ),S2(FITB),S3(Code),Max Score,Time Taken (Min),Violations Count,Summary,Strengths,Weaknesses,Roadmap\n";
 
       // CSV Rows
       backendSessions.forEach(session => {
@@ -189,6 +217,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ data, answers, his
           const weaknesses = (feedback.weaknesses || []).join('; ');
           const roadmap = (feedback.roadmap || []).join('; ');
           const summary = (feedback.summary || "").replace(/,/g, " "); // simple escape
+          const scores = session.sectionScores || {s1:0,s2:0,s3:0};
 
           const row = [
               session.sessionId,
@@ -196,6 +225,9 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ data, answers, his
               session.email,
               session.status,
               session.score,
+              scores.s1,
+              scores.s2,
+              scores.s3,
               session.maxScore,
               Math.round((session.timestamp - (session.startTime || session.timestamp)) / 60000) || 30, // Approx
               session.evidenceCount,
@@ -212,6 +244,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ data, answers, his
 
   const handleExportStudentCSV = (session: any) => {
       const feedback = session.feedback || {};
+      const scores = session.sectionScores || {s1:0,s2:0,s3:0};
       
       let csv = `eVALUEate Individual Candidate Report\n`;
       csv += `Generated On,${new Date().toLocaleString()}\n\n`;
@@ -221,7 +254,10 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ data, answers, his
       csv += `Email,${session.email}\n`;
       csv += `Session ID,${session.sessionId}\n`;
       csv += `Status,${session.status}\n`;
-      csv += `Score,${session.score} / ${session.maxScore}\n\n`;
+      csv += `Total Score,${session.score} / ${session.maxScore}\n`;
+      csv += `Section 1 (MCQ),${scores.s1}\n`;
+      csv += `Section 2 (FITB),${scores.s2}\n`;
+      csv += `Section 3 (Coding),${scores.s3}\n\n`;
       
       csv += `PERFORMANCE ANALYSIS\n`;
       csv += `Summary,"${feedback.summary || 'N/A'}"\n`;
@@ -292,115 +328,268 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ data, answers, his
                  </button>
              </div>
         </div>
-        
-        {/* Cohort Chart */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm mb-6">
-            <h3 className="text-lg font-bold text-slate-800 mb-4">Cohort Performance</h3>
-            <div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={cohortData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Bar dataKey="score" fill="#6366f1" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div>
+
+        {/* TABS */}
+        <div className="flex space-x-6 border-b border-slate-200 mb-6">
+            <button 
+                onClick={() => setActiveTab('DASHBOARD')}
+                className={`pb-3 px-2 font-medium transition-colors border-b-2 ${activeTab === 'DASHBOARD' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+            >
+                Analytics Dashboard
+            </button>
+            <button 
+                onClick={() => setActiveTab('MANAGEMENT')}
+                className={`pb-3 px-2 font-medium transition-colors border-b-2 ${activeTab === 'MANAGEMENT' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+            >
+                Candidate Management
+            </button>
         </div>
 
-        {/* Candidates List */}
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-             <div className="p-6 border-b border-slate-100"><h3 className="text-lg font-bold text-slate-800">Recent Assessments (Live Data)</h3></div>
-             <table className="w-full text-sm text-left">
-                 <thead className="bg-slate-50 text-slate-500">
-                     <tr>
-                         <th className="px-6 py-4">Candidate</th>
-                         <th className="px-6 py-4">Email</th>
-                         <th className="px-6 py-4">Score</th>
-                         <th className="px-6 py-4">Status</th>
-                         <th className="px-6 py-4 text-center">Export</th>
-                         <th className="px-6 py-4 text-center">Reactivate</th>
-                         <th className="px-6 py-4 text-center">Evidence</th>
-                     </tr>
-                 </thead>
-                 <tbody>
-                     {backendSessions.length === 0 ? (
-                         <tr><td colSpan={7} className="text-center py-8 text-slate-500">No assessments found.</td></tr>
-                     ) : (
-                         backendSessions.map((record, i) => (
-                             <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
-                                 <td className="px-6 py-4 font-medium">{record.candidateName}</td>
-                                 <td className="px-6 py-4 text-slate-500">{record.email}</td>
-                                 <td className="px-6 py-4"><span className={`px-2 py-1 rounded text-xs font-bold ${record.score && record.score > 50 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{record.score} / {record.maxScore}</span></td>
-                                 <td className="px-6 py-4">
-                                     <span className={`px-2 py-1 rounded-full text-xs font-bold ${record.status === 'TERMINATED' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700'}`}>
-                                         {record.status}
-                                     </span>
-                                 </td>
-                                 <td className="px-6 py-4 text-center">
-                                     <button 
-                                        onClick={() => handleExportStudentCSV(record)}
-                                        className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                        title="Download In-Depth Report"
-                                     >
-                                         <FileText className="w-4 h-4" />
-                                     </button>
-                                 </td>
-                                 <td className="px-6 py-4 text-center">
-                                     {(record.status === 'COMPLETED' || record.status === 'TERMINATED') && (
-                                         <button 
-                                            onClick={() => handleReactivate(record.email)}
-                                            className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                                            title="Reactivate Access (Unlock)"
-                                         >
-                                             <Unlock className="w-4 h-4" />
-                                         </button>
-                                     )}
-                                 </td>
-                                 <td className="px-6 py-4 text-center">
-                                     <button 
-                                        onClick={() => handleViewEvidence(record.sessionId)}
-                                        className="text-rose-600 hover:text-rose-800 font-bold text-xs flex items-center justify-center mx-auto"
-                                     >
-                                         <Shield className="w-3 h-3 mr-1" /> View ({record.evidenceCount})
-                                     </button>
-                                 </td>
-                             </tr>
-                         ))
-                     )}
-                 </tbody>
-             </table>
+        {activeTab === 'DASHBOARD' ? (
+        <>
+            {/* Cohort Chart */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm mb-6">
+                <h3 className="text-lg font-bold text-slate-800 mb-4">Cohort Performance</h3>
+                <div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={cohortData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Bar dataKey="score" fill="#6366f1" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div>
+            </div>
+
+            {/* Candidates List */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-slate-100"><h3 className="text-lg font-bold text-slate-800">Recent Assessments (Live Data)</h3></div>
+                <table className="w-full text-sm text-left">
+                    <thead className="bg-slate-50 text-slate-500">
+                        <tr>
+                            <th className="px-6 py-4">Candidate</th>
+                            <th className="px-6 py-4">Score</th>
+                            <th className="px-2 py-4 text-xs">S1</th>
+                            <th className="px-2 py-4 text-xs">S2</th>
+                            <th className="px-2 py-4 text-xs">S3</th>
+                            <th className="px-6 py-4">Status</th>
+                            <th className="px-6 py-4 text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {backendSessions.length === 0 ? (
+                            <tr><td colSpan={7} className="text-center py-8 text-slate-500">No assessments found.</td></tr>
+                        ) : (
+                            backendSessions.map((record, i) => (
+                                <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
+                                    <td className="px-6 py-4">
+                                        <div className="font-medium text-slate-900">{record.candidateName}</div>
+                                        <div className="text-xs text-slate-500">{record.email}</div>
+                                    </td>
+                                    <td className="px-6 py-4"><span className={`px-2 py-1 rounded text-xs font-bold ${record.score && record.score > 50 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{record.score} / {record.maxScore}</span></td>
+                                    
+                                    {/* Section Scores */}
+                                    <td className="px-2 py-4 text-xs text-slate-600">{record.sectionScores?.s1 || 0}</td>
+                                    <td className="px-2 py-4 text-xs text-slate-600">{record.sectionScores?.s2 || 0}</td>
+                                    <td className="px-2 py-4 text-xs text-slate-600">{record.sectionScores?.s3 || 0}</td>
+
+                                    <td className="px-6 py-4">
+                                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${record.status === 'TERMINATED' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-700'}`}>
+                                            {record.status}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 text-center flex items-center justify-center space-x-2">
+                                        <button 
+                                            onClick={() => handleExportStudentCSV(record)}
+                                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                            title="Download Report"
+                                        >
+                                            <FileText className="w-4 h-4" />
+                                        </button>
+                                        
+                                        {(record.status === 'COMPLETED' || record.status === 'TERMINATED') && (
+                                            <button 
+                                                onClick={() => handleReactivate(record.email)}
+                                                className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                                title="Unlock Access"
+                                            >
+                                                <Unlock className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                        
+                                        <button 
+                                            onClick={() => handleViewEvidence(record.sessionId)}
+                                            className="p-2 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors font-bold text-xs flex items-center"
+                                        >
+                                            <Shield className="w-4 h-4" />
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </>
+        ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Create New Candidate Form */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm h-fit">
+                <div className="flex items-center space-x-3 mb-6 border-b border-slate-100 pb-4">
+                    <div className="p-2 bg-indigo-100 rounded-lg"><Plus className="w-5 h-5 text-indigo-600" /></div>
+                    <h3 className="text-lg font-bold text-slate-800">Authorize New Candidate</h3>
+                </div>
+                
+                <form onSubmit={handleCreateCandidate} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Candidate Email</label>
+                        <input 
+                            type="email" 
+                            className="w-full px-4 py-3 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500"
+                            placeholder="e.g. new.hire@company.com"
+                            value={newCandidate.email}
+                            onChange={(e) => setNewCandidate({...newCandidate, email: e.target.value})}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">Access Code</label>
+                        <div className="relative">
+                            <input 
+                                type="text" 
+                                className="w-full pl-10 pr-4 py-3 rounded-lg border border-slate-200 outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                                placeholder="e.g. CODE2025"
+                                value={newCandidate.code}
+                                onChange={(e) => setNewCandidate({...newCandidate, code: e.target.value})}
+                            />
+                            <Key className="absolute left-3 top-3.5 w-5 h-5 text-slate-400" />
+                        </div>
+                        <button 
+                            type="button"
+                            onClick={() => setNewCandidate({...newCandidate, code: Math.random().toString(36).slice(-8).toUpperCase()})}
+                            className="text-xs text-indigo-600 font-bold mt-2 hover:underline"
+                        >
+                            Generate Random Code
+                        </button>
+                    </div>
+                    
+                    {createMsg.text && (
+                        <div className={`p-3 rounded-lg text-sm font-medium ${createMsg.type === 'error' ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                            {createMsg.text}
+                        </div>
+                    )}
+
+                    <button type="submit" className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors">
+                        Create Credentials
+                    </button>
+                </form>
+            </div>
+
+            {/* List of Authorized Candidates */}
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden h-fit">
+                <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                    <h3 className="text-lg font-bold text-slate-800">Authorized Credentials Directory</h3>
+                    <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded">Total: {authorizedCandidates.length}</span>
+                </div>
+                <div className="max-h-[500px] overflow-y-auto">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-slate-50 text-slate-500 sticky top-0">
+                            <tr>
+                                <th className="px-6 py-3">Email</th>
+                                <th className="px-6 py-3">Access Code</th>
+                                <th className="px-6 py-3 text-center">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {authorizedCandidates.map((c, i) => (
+                                <tr key={i} className="border-b border-slate-100 hover:bg-slate-50">
+                                    <td className="px-6 py-3 font-medium text-slate-700">{c.email}</td>
+                                    <td className="px-6 py-3 font-mono text-slate-500">{c.code}</td>
+                                    <td className="px-6 py-3 text-center">
+                                        {c.isLocked ? (
+                                            <span className="inline-flex items-center px-2 py-1 rounded bg-rose-100 text-rose-700 text-xs font-bold">
+                                                <Lock className="w-3 h-3 mr-1" /> Used
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center px-2 py-1 rounded bg-emerald-100 text-emerald-700 text-xs font-bold">
+                                                <CheckCircle className="w-3 h-3 mr-1" /> Active
+                                            </span>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
+        )}
       </div>
 
-      {/* SECURITY MODAL: EVIDENCE VIEWER */}
+      {/* SECURITY MODAL: EVIDENCE & LOGS VIEWER */}
       {selectedSessionId && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/95 backdrop-blur-sm secure-content">
               <div className="w-full max-w-6xl h-[90vh] bg-slate-900 rounded-2xl overflow-hidden flex flex-col border border-slate-700 shadow-2xl">
                   {/* Header */}
                   <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-900">
                       <div>
-                          <h2 className="text-xl font-bold text-white flex items-center"><Lock className="w-5 h-5 mr-2 text-rose-500" /> Evidence Vault: {evidenceData?.candidateName || 'Loading...'}</h2>
-                          <p className="text-xs text-rose-500 mt-1 font-mono uppercase tracking-widest">Strict Confidentiality Protocol Active • Do Not Share</p>
+                          <h2 className="text-xl font-bold text-white flex items-center"><Lock className="w-5 h-5 mr-2 text-rose-500" /> Secure Vault: {evidenceData?.candidateName || 'Loading...'}</h2>
+                          <div className="flex space-x-4 mt-4">
+                              <button 
+                                onClick={() => setModalTab('EVIDENCE')}
+                                className={`text-sm font-bold pb-1 border-b-2 ${modalTab === 'EVIDENCE' ? 'border-rose-500 text-white' : 'border-transparent text-slate-500'}`}
+                              >
+                                Visual Evidence
+                              </button>
+                              <button 
+                                onClick={() => setModalTab('LOGS')}
+                                className={`text-sm font-bold pb-1 border-b-2 ${modalTab === 'LOGS' ? 'border-indigo-500 text-white' : 'border-transparent text-slate-500'}`}
+                              >
+                                Activity Logs
+                              </button>
+                          </div>
                       </div>
                       <button onClick={handleCloseModal} className="p-2 hover:bg-slate-800 rounded-full text-white"><X className="w-6 h-6" /></button>
                   </div>
 
-                  {/* Evidence Grid */}
+                  {/* Body */}
                   <div className="flex-1 overflow-y-auto p-8 bg-slate-950">
                       {!evidenceData ? (
                           <div className="flex items-center justify-center h-full text-slate-500">Decrypting Secure Storage...</div>
-                      ) : evidenceData.evidence.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center h-full text-slate-500">
-                              <CheckCircle className="w-12 h-12 text-emerald-500 mb-4" />
-                              <p>No violations detected for this session.</p>
-                          </div>
+                      ) : modalTab === 'EVIDENCE' ? (
+                            evidenceData.evidence.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-full text-slate-500">
+                                    <CheckCircle className="w-12 h-12 text-emerald-500 mb-4" />
+                                    <p>No violations detected for this session.</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                    {evidenceData.evidence.map((ev, idx) => (
+                                        <div key={idx} className="space-y-3">
+                                            <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
+                                                <span className="font-mono text-rose-400 font-bold uppercase">{ev.type.replace('_', ' ')}</span>
+                                                <span>{new Date(ev.time).toLocaleTimeString()}</span>
+                                            </div>
+                                            <div className="ring-1 ring-slate-800 rounded-lg overflow-hidden relative group">
+                                                {/* THE SECURE IMAGE RENDERER */}
+                                                <SecureEvidenceImage base64={ev.img} adminId={credentials.username} />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )
                       ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                              {evidenceData.evidence.map((ev, idx) => (
-                                  <div key={idx} className="space-y-3">
-                                      <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
-                                          <span className="font-mono text-rose-400 font-bold uppercase">{ev.type.replace('_', ' ')}</span>
-                                          <span>{new Date(ev.time).toLocaleTimeString()}</span>
-                                      </div>
-                                      <div className="ring-1 ring-slate-800 rounded-lg overflow-hidden relative group">
-                                           {/* THE SECURE IMAGE RENDERER */}
-                                           <SecureEvidenceImage base64={ev.img} adminId={credentials.username} />
-                                      </div>
-                                  </div>
-                              ))}
-                          </div>
+                        // LOGS VIEW
+                        <div className="space-y-2">
+                            {evidenceData.logs && evidenceData.logs.length > 0 ? (
+                                evidenceData.logs.map((log, i) => (
+                                    <div key={i} className="flex items-start space-x-4 p-3 border-b border-slate-800 hover:bg-slate-900/50 rounded">
+                                        <div className="font-mono text-xs text-slate-500 mt-1 whitespace-nowrap">
+                                            {new Date(log.timestamp).toLocaleTimeString()}
+                                        </div>
+                                        <div>
+                                            <div className={`text-sm font-bold ${log.action.includes('VIOLATION') ? 'text-rose-400' : 'text-indigo-400'}`}>
+                                                {log.action}
+                                            </div>
+                                            <div className="text-xs text-slate-400 mt-1">{log.details}</div>
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="text-slate-500 text-center">No logs available.</div>
+                            )}
+                        </div>
                       )}
                   </div>
 

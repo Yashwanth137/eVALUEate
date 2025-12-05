@@ -1,3 +1,4 @@
+
 const express = require('express');
 const cors = require('cors');
 const { GoogleGenAI } = require('@google/genai');
@@ -49,7 +50,6 @@ const CANDIDATE_DIRECTORY = {
     'k.chanakya2004@gmail.com': 'CHANAKYA2024'
 };
 
-
 // TRACK ACCESS STATE (True = Locked/Used, False/Undefined = Active)
 const CANDIDATE_ACCESS_STATE = new Map();
 
@@ -91,6 +91,17 @@ const verifyToken = (req, res, next) => {
     });
 };
 
+const logAction = (sessionId, action, details = "") => {
+    const session = SESSION_STORE.get(sessionId);
+    if (session) {
+        session.logs.push({
+            timestamp: Date.now(),
+            action,
+            details
+        });
+    }
+};
+
 // --- OPTIMIZED PROMPTS (COMPACT JSON) ---
 
 const PROMPT_S1_MCQ = (jd) => `
@@ -125,7 +136,14 @@ Formatting Rules:
 4. Use '___' for the blank.
 
 Format: JSON Array.
-Keys: "id", "type": "FITB", "text", "correctAnswer", "marks": 2.
+Keys: 
+"id", 
+"type": "FITB", 
+"text", 
+"correctAnswer", 
+"marks": 2,
+"caseSensitive": boolean (true/false. Set true ONLY if case strictly matters, e.g. specific acronyms. Default false).
+
 Strictly valid JSON. No Markdown.
 `;
 
@@ -166,31 +184,39 @@ Format: JSON ARRAY containing exactly 2 objects.
 Strictly valid JSON Array of length 2. No Markdown.
 `;
 
-const GRADE_CODING_PROMPT = (problem, code) => `
-Act as a Strict Code Grader.
+const GRADE_CODING_PROMPT = (problem, code, examples) => `
+Act as a RUTHLESS Senior Tech Interviewer and Compiler.
 Problem: "${problem}"
 Student Code: "${code}"
+Provided Test Cases (Must Pass): ${JSON.stringify(examples)}
 
-Marking Schema (Max 25):
-- Base Case Correct: +5 Marks
-- General Case Correct: +8 Marks
-- Edge Case Correct: +12 Marks
-Total = 5 + 8 + 12 = 25.
+Strict Marking Schema (Total 25):
+1. **Base Case (5 Marks)**: Does it handle simple/provided inputs correctly?
+2. **General Logic (8 Marks)**: Is the algorithm correct for standard inputs?
+3. **Edge Cases (12 Marks)**: Does it handle nulls, empty strings, max values, or boundary conditions?
 
 Task:
-Analyze the code logic. Does it handle the base case? Does it handle the general logic? Does it handle edge cases (null, empty, large inputs)?
-Return ONLY the integer score (0, 5, 8, 12, 13, 17, 20, or 25).
+Mentally execute the code against the provided examples and hidden edge cases.
+- If the code is empty, irrelevant, or does not compile logic: 0.
+- If it fails the provided Base Cases: 0 (Strict adherence).
+- If it passes Base but fails General: 5.
+- If it passes Base + General but fails Edge: 13.
+- If it is perfect: 25.
+
+Return ONLY the integer score (0, 5, 13, 17, 20, or 25). Do not return text.
 `;
 
-const GENERATE_FEEDBACK_PROMPT = (jd, score, maxScore) => `
+const GENERATE_FEEDBACK_PROMPT = (jd, score, maxScore, sectionScores) => `
 Generate a detailed technical feedback report for a candidate applying for the role: "${jd}".
-Score Achieved: ${score} / ${maxScore}.
+Overall Score: ${score} / ${maxScore}.
+Section Breakdown: 
+- MCQ: ${sectionScores.s1}
+- FITB: ${sectionScores.s2}
+- Coding: ${sectionScores.s3}
 
 Task:
-1. Write a 3-4 line professional SUMMARY of their performance based on the score.
-   - If score > 70%: Praise their strong technical grasp and problem-solving skills.
-   - If score < 50%: Highlight gaps in core concepts and coding implementation.
-2. List 3 Key STRENGTHS based on the role.
+1. Write a 3-4 line professional SUMMARY of their performance. Mention specifically which section was their strongest.
+2. List 3 Key STRENGTHS based on the section scores.
 3. List 3 Areas of WEAKNESS/IMPROVEMENT.
 4. Provide a 3-step ROADMAP to improve.
 
@@ -225,10 +251,11 @@ app.get('/api/admin/sessions', verifyToken, (req, res) => {
             email: session.candidate.email,
             score: session.finalScore || 0,
             maxScore: session.maxScore || 100,
+            sectionScores: session.sectionScores || { s1: 0, s2: 0, s3: 0 },
             timestamp: session.startTime,
             status: session.status,
             evidenceCount: session.evidence ? session.evidence.length : 0,
-            feedback: session.feedback // Critical: Include feedback for CSV export
+            feedback: session.feedback
         });
     });
     res.json({ sessions: allSessions.sort((a,b) => b.timestamp - a.timestamp) });
@@ -238,7 +265,11 @@ app.post('/api/admin/evidence', verifyToken, (req, res) => {
     if (req.user.role !== 'ADMIN') return res.status(403).json({ error: "Admin Only" });
     const session = SESSION_STORE.get(req.body.sessionId);
     if (!session) return res.status(404).json({ error: "Not Found" });
-    res.json({ evidence: session.evidence || [], candidateName: session.candidate.name });
+    res.json({ 
+        evidence: session.evidence || [], 
+        logs: session.logs || [],
+        candidateName: session.candidate.name 
+    });
 });
 
 // NEW: ADMIN REACTIVATE ACCESS
@@ -335,7 +366,9 @@ app.post('/api/assessment/generate', async (req, res) => {
             startTime: Date.now(),
             status: 'ACTIVE',
             evidence: [],
-            finalScore: 0
+            logs: [{ timestamp: Date.now(), action: "SESSION_STARTED", details: "Assessment Initialized" }],
+            finalScore: 0,
+            sectionScores: { s1: 0, s2: 0, s3: 0 }
         });
 
         const token = generateToken({ sessionId, role: 'CANDIDATE' });
@@ -367,6 +400,8 @@ app.post('/api/assessment/generate-section', verifyToken, async (req, res) => {
     if (session.fullSections[sectionIndex].questions.length > 0) {
         return res.json({ questions: session.fullSections[sectionIndex].questions.map(({correctAnswer, ...q}) => q) });
     }
+
+    logAction(req.user.sessionId, "SECTION_GENERATED", `Generated ${sectionId}`);
 
     let newQuestions = [];
     try {
@@ -445,6 +480,7 @@ app.post('/api/assessment/heartbeat', verifyToken, (req, res) => {
     // Log proctoring violation if present
     if (req.body.violation) {
         console.log(`[PROCTOR] Violation: ${req.body.violation} for ${req.user.sessionId}`);
+        logAction(req.user.sessionId, "VIOLATION_DETECTED", req.body.violation);
         if (req.body.snapshot) {
              session.evidence.push({ type: req.body.violation, time: Date.now(), img: req.body.snapshot });
         }
@@ -461,8 +497,11 @@ app.post('/api/assessment/submit', verifyToken, async (req, res) => {
     let totalScore = 0; 
     let maxScore = 0;
     
+    let sectionScores = { s1: 0, s2: 0, s3: 0 };
+    
     // LOCK ACCESS for this candidate
     CANDIDATE_ACCESS_STATE.set(session.candidate.email, true);
+    logAction(req.user.sessionId, "SUBMITTED", "Assessment Completed");
     console.log(`[ACCESS] Credentials locked for ${session.candidate.email}`);
     
     // Grade All Sections
@@ -472,25 +511,40 @@ app.post('/api/assessment/submit', verifyToken, async (req, res) => {
             const userAns = userAnswers[q.id];
             
             if (q.type === 'MCQ') {
-                if (Number(userAns) === Number(q.correctAnswer)) totalScore += (q.marks || 1);
+                if (Number(userAns) === Number(q.correctAnswer)) {
+                    totalScore += (q.marks || 1);
+                    sectionScores.s1 += (q.marks || 1);
+                }
             } 
             else if (q.type === 'FITB') {
-                if (String(userAns||"").trim().toLowerCase() === String(q.correctAnswer).trim().toLowerCase()) totalScore += (q.marks || 2);
+                const u = String(userAns||"").trim();
+                const c = String(q.correctAnswer).trim();
+                
+                // Case-Insensitive by default unless flag is present
+                const match = q.caseSensitive 
+                    ? u === c
+                    : u.toLowerCase() === c.toLowerCase();
+
+                if (match) {
+                    totalScore += (q.marks || 2);
+                    sectionScores.s2 += (q.marks || 2);
+                }
             } 
             else if (q.type === 'CODING') {
-                // AI GRADING FOR CODING (Simulated to save time/tokens here, but using the rubric concept)
-                // In production, you would await this.
+                // RUTHLESS AI GRADING FOR CODING
                 if (userAns && userAns.length > 20) {
                     try {
                          const gradeRes = await ai.models.generateContent({
                             model: 'gemini-2.5-flash',
-                            contents: GRADE_CODING_PROMPT(q.text, userAns)
+                            contents: GRADE_CODING_PROMPT(q.text, userAns, q.examples || [])
                         });
                         const awarded = parseInt(cleanJSON(gradeRes.text)) || 0;
                         totalScore += awarded;
+                        sectionScores.s3 += awarded;
+                        logAction(req.user.sessionId, "GRADING_CODING", `Q${q.id} Awarded: ${awarded}/25`);
                     } catch (e) {
-                        // Fallback Grading if AI fails
-                        totalScore += 5; // Assume base case passed if length > 20
+                        // Fallback Grading if AI fails - Strict zero if fail
+                        logAction(req.user.sessionId, "GRADING_ERROR", `Failed to grade Q${q.id}`);
                     }
                 }
             }
@@ -500,6 +554,7 @@ app.post('/api/assessment/submit', verifyToken, async (req, res) => {
     session.status = 'COMPLETED';
     session.finalScore = totalScore;
     session.maxScore = maxScore;
+    session.sectionScores = sectionScores;
     session.endTime = Date.now();
     
     let feedback = {
@@ -512,7 +567,7 @@ app.post('/api/assessment/submit', verifyToken, async (req, res) => {
     try {
         const feedbackRes = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: GENERATE_FEEDBACK_PROMPT(session.jd, totalScore, maxScore),
+            contents: GENERATE_FEEDBACK_PROMPT(session.jd, totalScore, maxScore, sectionScores),
             config: { responseMimeType: 'application/json' }
         });
         feedback = JSON.parse(cleanJSON(feedbackRes.text));
@@ -536,6 +591,7 @@ app.post('/api/assessment/submit', verifyToken, async (req, res) => {
         score: totalScore, 
         maxScore, 
         feedback: feedback, 
+        sectionScores,
         gradedDetails: {} 
     });
 });
@@ -543,13 +599,13 @@ app.post('/api/assessment/submit', verifyToken, async (req, res) => {
 app.post('/api/code/run', verifyToken, async (req, res) => {
     const { language, code, problem, customInput, examples } = req.body;
     
-    // Construct Example Context
+    // Construct Example Context with EXPECTED OUTPUT
     let examplesContext = "";
     if (examples && Array.isArray(examples) && examples.length >= 2) {
         examplesContext = `
         Use these EXACT provided examples for the first two test cases:
-        Example 1 (Base Case): Input: ${JSON.stringify(examples[0].input)}
-        Example 2 (General Case): Input: ${JSON.stringify(examples[1].input)}
+        Example 1 (Base Case): Input: ${JSON.stringify(examples[0].input)} | Expected Output: ${JSON.stringify(examples[0].output)}
+        Example 2 (General Case): Input: ${JSON.stringify(examples[1].input)} | Expected Output: ${JSON.stringify(examples[1].output)}
         `;
     }
 
@@ -580,11 +636,12 @@ app.post('/api/code/run', verifyToken, async (req, res) => {
 
             Rules:
             1. If Custom Input is provided, execute it FIRST and display the result clearly before standard tests.
-            2. If "examples" were provided, you MUST use those specific inputs for Test Case 1 and 2 to ensure consistency with the problem description.
-            3. If Syntax Error, output ONLY the error message and line number.
-            4. If SQL, assume the schema provided in the problem statement exists and validate the query against it.
-            5. Do NOT be lenient. If logic is wrong, FAIL the test case.
-            6. Do NOT provide the corrected code or solution. Just the execution log.
+            2. If "examples" were provided, you MUST use those specific inputs for Test Case 1 and 2 AND compare the student's output against the Expected Output provided.
+            3. If output does NOT match expected output exactly, the test case is FAIL.
+            4. If Syntax Error, output ONLY the error message and line number.
+            5. If SQL, assume the schema provided in the problem statement exists and validate the query against it.
+            6. Do NOT be lenient. If logic is wrong, FAIL the test case.
+            7. Do NOT provide the corrected code or solution. Just the execution log.
             `,
         });
         
