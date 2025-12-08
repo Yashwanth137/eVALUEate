@@ -206,7 +206,7 @@ Strictly valid JSON. No Markdown.
 const PROMPT_S2_FITB = (jd) => {
     const randomTopics = getRandomCoreTopics();
     return `
-Generate exactly 10 DISTINCT Technical Fill-in-the-Blank questions.
+Generate exactly 10 DISTINCT Hard Technical Fill-in-the-Blank questions.
 DISTRIBUTION:
 - 5 Questions MUST cover these specific random Core CS topics: [${randomTopics}]. Do NOT use generic questions like 'Binary Search is O(log n)'. Go deeper.
 - 5 Questions MUST cover: "${jd.substring(0, 300)}".
